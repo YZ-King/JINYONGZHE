@@ -1,5 +1,6 @@
 import  numpy as np
 
+
 m1=0.6
 m2=0.7
 g=9.80665
@@ -43,9 +44,9 @@ def T(q=np.array([2,1]),dq=np.array([2,1]),ddq=np.array([2,1])):
     return (T)
 
 def main():
-    q=np.array([[0],[0]])   #q1:[o,pi/2] q2:[-pi,pi]
+    q=np.array([[np.pi/4],[np.pi/4]])   #q1:[o,pi/2] q2:[-pi,pi]
     dq=np.array([[np.pi/2],[np.pi/2]])          #dq1:[-pi/2,pi/2] dq2:[-pi/2,pi/2]
-    ddq=np.array([[np.pi/2],[np.pi/2]])         #ddq1:[-pi/2,pi/2] dq2:[-pi/2,pi/2]
+    ddq=np.array([[np.pi*np.pi],[np.pi*np.pi]])         #ddq1:[-pi/2,pi/2] dq2:[-pi/2,pi/2]
 
     print(MMatrix(q))
     print(VGFMatrix(q,dq))
