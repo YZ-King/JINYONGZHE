@@ -1,0 +1,108 @@
+import torch
+from torch.utils.data import Dataset
+import torch.nn as nn
+import numpy as np
+from torch.autograd import Variable
+import matplotlib.pyplot as plt
+
+x=np.load('theta_track.npy')
+y=np.load('u_track.npy')
+x_train=torch.from_numpy(x[0:4500]).float()
+y_train=torch.from_numpy(y[0:4500]).float()
+x_test=torch.from_numpy(x[4501:]).float()
+y_test=torch.from_numpy(y[4501:]).float()
+if torch.cuda.is_available():
+    x_train=x_train.cuda()      #将x_train数据复制到gpu上
+    y_train=y_train.cuda()
+    x_test=x_test.cuda()
+    y_test=y_test.cuda()
+else:
+    print('There is no GPU')
+
+BATCH_SIZE = 100
+EPOCH=10
+TIME_STEP = 2001     # rnn time step
+INPUT_SIZE = 2      # rnn input size
+LR = 0.01           # learning rate
+
+class TensorDataset(Dataset):
+    def __init__(self, data_tensor, target_tensor):
+        self.data_tensor = data_tensor
+        self.target_tensor = target_tensor
+
+    def __getitem__(self, index):
+        return self.data_tensor[index], self.target_tensor[index]
+
+    def __len__(self):
+        return self.data_tensor.size(0)
+
+train_dataset=TensorDataset(x_train,y_train)
+# test_dataset=TensorDataset(x_test,y_test)
+train_loader = torch.utils.data.DataLoader(dataset=train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+
+
+
+
+
+class RNN(nn.Module):
+    def __init__(self):
+        super(RNN, self).__init__()
+
+        self.rnn = nn.RNN(
+            input_size=INPUT_SIZE,
+            hidden_size=12,  # rnn hidden unit
+            num_layers=3,  # number of rnn layer
+            batch_first=True,  # input & output will has batch size as 1s dimension. e.g. (batch, time_step, input_size)
+        )
+        self.out = nn.Linear(12, 2)
+
+    def forward(self, x, h_state):
+        # x (batch, time_step, input_size)
+        # h_state (n_layers, batch, hidden_size)
+        # r_out (batch, time_step, hidden_size)
+        r_out, h_state = self.rnn(x, h_state)     #h_state是最后一组数据得到的h_state
+
+        outs = []  # save all predictions
+        for time_step in range(r_out.size(1)):  # calculate output for each time step  ,r_out.size(1)是r_out的第二个维度有多少个数
+            outs.append(self.out(r_out[:, time_step, :]))
+        return torch.stack(outs, dim=1), h_state    #torch.stack把list变成tensor,并且把数组的每个元素放在tensor的第2维度上(dim=1)
+
+        # instead, for simplicity, you can replace above codes by follows
+        # r_out = r_out.view(-1, 32)
+        # outs = self.out(r_out)
+        # outs = outs.view(-1, TIME_STEP, 1)
+        # return outs, h_state
+
+        # or even simpler, since nn.Linear can accept inputs of any dimension
+        # and returns outputs with same dimension except for the last
+        # outs = self.out(r_out)
+        # return outs
+
+rnn = RNN()
+print(rnn)
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+rnn.to(device)
+
+optimizer = torch.optim.Adam(rnn.parameters(), lr=LR)   # optimize all cnn parameters
+loss_func = nn.MSELoss()
+
+h_state=None
+
+for epoch in range(EPOCH):
+    for step, (x, y) in enumerate(train_loader):        # gives batch data
+
+        x=Variable(x)                                   #神经网络运算时是用variable类型数据运算，因为可以求梯度
+        y=Variable(y)
+        output,h_state = rnn(x,h_state)                 # rnn output
+        h_state = Variable(h_state.data)                # repack the hidden state, break the connection from last iteration
+        train_loss = loss_func(output, y)
+        optimizer.zero_grad()                           # clear gradients for this training step
+        train_loss.backward()                                 # backpropagation, compute gradients
+        optimizer.step()                                # apply gradients
+
+
+        if step % 5 == 0:
+            test_output,h=rnn(x_test,None)
+            test_loss=loss_func(test_output,y_test)
+            print(step,'of Epoch',EPOCH,'| train_loss:',train_loss,'| test_loss:',test_loss)
